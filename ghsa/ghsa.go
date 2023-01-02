@@ -28,7 +28,10 @@ var (
 	Nuget      SecurityAdvisoryEcosystem = "NUGET"
 	Pip        SecurityAdvisoryEcosystem = "PIP"
 	Rubygems   SecurityAdvisoryEcosystem = "RUBYGEMS"
-	Ecosystems                           = []SecurityAdvisoryEcosystem{Composer, Maven, Npm, Nuget, Pip, Rubygems}
+	Go         SecurityAdvisoryEcosystem = "GO"
+	Rust       SecurityAdvisoryEcosystem = "RUST"
+	Erlang     SecurityAdvisoryEcosystem = "ERLANG"
+	Ecosystems                           = []SecurityAdvisoryEcosystem{Composer, Maven, Npm, Nuget, Pip, Rubygems, Go, Erlang, Rust}
 
 	wait = func(i int) time.Duration {
 		sleep := math.Pow(float64(i), 2) + float64(utils.RandInt()%10)
@@ -92,6 +95,10 @@ func (c Config) update(ecosystem SecurityAdvisoryEcosystem) error {
 
 	ghsaJsonMap := make(map[string]GithubSecurityAdvisoryJson)
 	for _, ghsa := range ghsas {
+		// skip bad ghsa
+		if ghsa.Package.Name == "" {
+			continue
+		}
 		ghsa.Package.Name = strings.TrimSpace(ghsa.Package.Name)
 
 		ghsaJson, ok := ghsaJsonMap[ghsa.Advisory.GhsaId+ghsa.Package.Name]
@@ -150,11 +157,14 @@ func (c Config) fetchGithubSecurityAdvisories(ecosystem SecurityAdvisoryEcosyste
 			}
 
 			err = c.client.Query(context.Background(), &getVulnerabilitiesQuery, variables)
-			if err == nil {
+			if err == nil || len(getVulnerabilitiesQuery.Nodes) > 0 {
 				break
 			}
 		}
-		if err != nil {
+		// GitHub GraphQL API may return error and one of nodes == nil
+		// We must write other nodes.
+		// Bad node will be skipped in 'update' function
+		if err != nil && len(getVulnerabilitiesQuery.Nodes) == 0 {
 			return nil, xerrors.Errorf("graphql api error: %w", err)
 		}
 

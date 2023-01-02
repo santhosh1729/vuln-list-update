@@ -88,12 +88,76 @@ func TestConfig_Update(t *testing.T) {
 									Summary:     "Low severity vulnerability that affects simplesamlphp/simplesamlphp",
 									UpdatedAt:   "2020-01-24T21:27:17Z",
 									WithdrawnAt: "",
+									CVSS: GithubCVSS{
+										Score:        3.7,
+										VectorString: "3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+									},
 								},
 								FirstPatchedVersion: FirstPatchedVersion{
 									Identifier: "1.14.4",
 								},
 								VulnerableVersionRange: "\u003c 1.14.4",
 							},
+						},
+						PageInfo: PageInfo{
+							EndCursor:   githubql.String(""),
+							HasNextPage: false,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:           "positive test with one nil node",
+			appFs:          afero.NewMemMapFs(),
+			inputEcosystem: Composer,
+			goldenFiles: map[string]string{
+				"/tmp/ghsa/composer/simplesamlphp/simplesamlphp/GHSA-2r3v-q9x3-7g46.json": "testdata/composer/simplesamlphp/simplesamlphp/GHSA-2r3v-q9x3-7g46.json",
+			},
+			inputResponse: map[githubql.String]GetVulnerabilitiesQuery{
+				githubql.String(""): {
+					SecurityVulnerabilities: SecurityVulnerabilities{
+						Nodes: []GithubSecurityAdvisory{
+							{
+								Severity:  "LOW",
+								UpdatedAt: "2020-01-24T21:15:59Z",
+								Package: Package{
+									Ecosystem: "COMPOSER",
+									Name:      "simplesamlphp/simplesamlphp",
+								},
+								Advisory: Advisory{
+									DatabaseId: 1883,
+									Id:         "MDE2OlNlY3VyaXR5QWR2aXNvcnlHSFNBLTJyM3YtcTl4My03ZzQ2",
+									GhsaId:     "GHSA-2r3v-q9x3-7g46",
+									References: []Reference{
+										{
+											Url: "https://github.com/simplesamlphp/simplesamlphp/security/advisories/GHSA-2r3v-q9x3-7g46",
+										},
+									},
+									Identifiers: []Identifier{
+										{
+											Type:  "GHSA",
+											Value: "GHSA-2r3v-q9x3-7g46",
+										},
+									},
+									Description: "### Background\nSeveral scripts part of SimpleSAMLphp display a web page with links obtained from the request parameters. This allows us to enhance usability, as the users are presented with links they can follow after completing a certain action, like logging out.\n\n### Description\nThe following scripts were not checking the URLs obtained via the HTTP request before displaying them as the target of links that the user may click on:\n\n- `www/logout.php`\n- `modules/core/www/no_cookie.php`\n\nThe issue allowed attackers to display links targeting a malicious website inside a trusted site running SimpleSAMLphp, due to the lack of security checks involving the `link_href` and `retryURL` HTTP parameters, respectively. The issue was resolved by including a verification of the URLs received in the request against a white list of websites specified in the `trusted.url.domains` configuration option.\n\n### Affected versions\nAll SimpleSAMLphp versions prior to 1.14.4.\n\n### Impact\nA remote attacker could craft a link pointing to a trusted website running SimpleSAMLphp, including a parameter pointing to a malicious website, and try to fool the victim into visiting that website by clicking on a link in the page presented by SimpleSAMLphp.\n\n### Resolution\nUpgrade to the latest version.\n\n### Credit\nThis security issue was discovered and reported by John Page (hyp3rlinx).",
+									Origin:      "UNSPECIFIED",
+									PublishedAt: "2020-01-24T21:27:16Z",
+									Severity:    "LOW",
+									Summary:     "Low severity vulnerability that affects simplesamlphp/simplesamlphp",
+									UpdatedAt:   "2020-01-24T21:27:17Z",
+									WithdrawnAt: "",
+									CVSS: GithubCVSS{
+										Score:        3.7,
+										VectorString: "3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+									},
+								},
+								FirstPatchedVersion: FirstPatchedVersion{
+									Identifier: "1.14.4",
+								},
+								VulnerableVersionRange: "\u003c 1.14.4",
+							},
+							{}, // nil node
 						},
 						PageInfo: PageInfo{
 							EndCursor:   githubql.String(""),
@@ -149,6 +213,10 @@ func TestConfig_Update(t *testing.T) {
 									Summary:     "High severity vulnerability that affects org.apache.solr:solr-core",
 									UpdatedAt:   "2020-01-28T22:26:54Z",
 									WithdrawnAt: "",
+									CVSS: GithubCVSS{
+										Score:        9.8,
+										VectorString: "3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+									},
 								},
 								FirstPatchedVersion: FirstPatchedVersion{
 									Identifier: "8.3.0",
@@ -188,6 +256,10 @@ func TestConfig_Update(t *testing.T) {
 									Summary:     "Moderate severity vulnerability that affects org.apache.qpid:qpid-broker",
 									UpdatedAt:   "2019-07-03T21:02:04Z",
 									WithdrawnAt: "",
+									CVSS: GithubCVSS{
+										Score:        9.8,
+										VectorString: "3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+									},
 								},
 								FirstPatchedVersion: FirstPatchedVersion{
 									Identifier: "6.0.0",
@@ -238,6 +310,10 @@ func TestConfig_Update(t *testing.T) {
 									Summary:     "Moderate severity vulnerability that affects org.apache.hive:hive, org.apache.hive:hive-exec, and org.apache.hive:hive-service",
 									UpdatedAt:   "2019-07-03T21:02:07Z",
 									WithdrawnAt: "",
+									CVSS: GithubCVSS{
+										Score:        4.3,
+										VectorString: "3.0/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N",
+									},
 								},
 								FirstPatchedVersion: FirstPatchedVersion{
 									Identifier: "2.3.1",
@@ -278,6 +354,10 @@ func TestConfig_Update(t *testing.T) {
 									Summary:     "Moderate severity vulnerability that affects org.apache.hive:hive, org.apache.hive:hive-exec, and org.apache.hive:hive-service",
 									UpdatedAt:   "2019-07-03T21:02:07Z",
 									WithdrawnAt: "",
+									CVSS: GithubCVSS{
+										Score:        4.3,
+										VectorString: "3.0/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N",
+									},
 								},
 								FirstPatchedVersion: FirstPatchedVersion{
 									Identifier: "2.2.1",
@@ -318,6 +398,10 @@ func TestConfig_Update(t *testing.T) {
 									Summary:     "Moderate severity vulnerability that affects org.apache.hive:hive, org.apache.hive:hive-exec, and org.apache.hive:hive-service",
 									UpdatedAt:   "2019-07-03T21:02:07Z",
 									WithdrawnAt: "",
+									CVSS: GithubCVSS{
+										Score:        4.3,
+										VectorString: "3.0/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N",
+									},
 								},
 								FirstPatchedVersion: FirstPatchedVersion{
 									Identifier: "2.1.2",

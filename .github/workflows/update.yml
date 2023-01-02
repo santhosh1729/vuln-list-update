@@ -11,13 +11,13 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
     steps:
-    - name: Set up Go 1.15
-      uses: actions/setup-go@v1
+    - name: Set up Go
+      uses: actions/setup-go@v3
       with:
-        go-version: 1.15
+        go-version: 1.18
 
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Set Owner
       run: echo "VULNLIST_REPOSITORY_OWNER=$(echo ${GITHUB_REPOSITORY} | awk -F / '{print $1}' | sed -e 's/:refs//')" >> $GITHUB_ENV
@@ -40,12 +40,12 @@ jobs:
       run: ./vuln-list-update -target alpine
 
     - if: always()
-      name: Debian Security Bug Tracker
-      run: ./vuln-list-update -target debian
+      name: Alpine Unfixed Vulnerability Tracker
+      run: ./vuln-list-update -target alpine-unfixed
 
     - if: always()
-      name: Debian OVAL
-      run: ./vuln-list-update -target debian-oval
+      name: Debian Security Bug Tracker
+      run: ./vuln-list-update -target debian
 
     - if: always()
       name: Ubuntu CVE Tracker
@@ -82,6 +82,38 @@ jobs:
     - if: always()
       name: GitLab Advisory Database
       run: ./vuln-list-update -target glad
+
+    - if: always()
+      name: Arch Linux Security Advisory
+      run: ./vuln-list-update -target arch-linux
+
+    - if: always()
+      name: AlmaLinux Security Advisory
+      run: ./vuln-list-update -target alma
+
+    - if: always()
+      name: Rocky Linux Security Advisory
+      run: ./vuln-list-update -target rocky
+
+    - if: always()
+      name: CBL-Mariner Vulnerability Data
+      run: ./vuln-list-update -target mariner
+
+    - if: always()
+      name: OSV Database
+      run: ./vuln-list-update -target osv
+
+    - if: always()
+      name: Go Vulnerability Database
+      run: ./vuln-list-update -target go-vulndb
+
+    - if: always()
+      name: Wolfi Secdb
+      run: ./vuln-list-update -target wolfi
+
+    - if: always()
+      name: Known Exploited Vulnerabilities Catalog
+      run: ./vuln-list-update -target kevc
 
     # Red Hat Security Data API is unstable.
     # It should be split into small pieces to reduce the impact of failure.
@@ -126,5 +158,5 @@ jobs:
       run: ./vuln-list-update -target redhat -years 2018
 
     - if: always()
-      name: Red Hat Security Data API 2019-2021
-      run: ./vuln-list-update -target redhat -years 2019,2020,2021
+      name: Red Hat Security Data API 2019-2022
+      run: ./vuln-list-update -target redhat -years 2019,2020,2021,2022

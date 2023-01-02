@@ -10,24 +10,32 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aquasecurity/vuln-list-update/kevc"
+	"github.com/aquasecurity/vuln-list-update/wolfi"
+
 	githubql "github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
 	"golang.org/x/xerrors"
 
+	"github.com/aquasecurity/vuln-list-update/alma"
 	"github.com/aquasecurity/vuln-list-update/alpine"
+	alpineunfixed "github.com/aquasecurity/vuln-list-update/alpine-unfixed"
 	"github.com/aquasecurity/vuln-list-update/amazon"
-	arch_linux "github.com/aquasecurity/vuln-list-update/arch-linux"
+	arch_linux "github.com/aquasecurity/vuln-list-update/arch"
 	"github.com/aquasecurity/vuln-list-update/cwe"
-	debianoval "github.com/aquasecurity/vuln-list-update/debian/oval"
 	"github.com/aquasecurity/vuln-list-update/debian/tracker"
 	"github.com/aquasecurity/vuln-list-update/ghsa"
 	"github.com/aquasecurity/vuln-list-update/git"
 	"github.com/aquasecurity/vuln-list-update/glad"
+	govulndb "github.com/aquasecurity/vuln-list-update/go-vulndb"
+	"github.com/aquasecurity/vuln-list-update/mariner"
 	"github.com/aquasecurity/vuln-list-update/nvd"
 	oracleoval "github.com/aquasecurity/vuln-list-update/oracle/oval"
+	"github.com/aquasecurity/vuln-list-update/osv"
 	"github.com/aquasecurity/vuln-list-update/photon"
 	redhatoval "github.com/aquasecurity/vuln-list-update/redhat/oval"
 	"github.com/aquasecurity/vuln-list-update/redhat/securitydataapi"
+	"github.com/aquasecurity/vuln-list-update/rocky"
 	susecvrf "github.com/aquasecurity/vuln-list-update/suse/cvrf"
 	"github.com/aquasecurity/vuln-list-update/ubuntu"
 	"github.com/aquasecurity/vuln-list-update/utils"
@@ -40,9 +48,11 @@ const (
 )
 
 var (
-	target = flag.String("target", "", "update target (nvd, alpine, redhat, redhat-oval, "+
-		"debian, debian-oval, ubuntu, amazon, oracle-oval, suse-cvrf, photon, arch-linux, ghsa, glad, cwe)")
-	years = flag.String("years", "", "update years (only redhat)")
+	target = flag.String("target", "", "update target (nvd, alpine, alpine-unfixed, redhat, redhat-oval, "+
+		"debian, debian-oval, ubuntu, amazon, oracle-oval, suse-cvrf, photon, arch-linux, ghsa, glad, cwe, osv, go-vulndb, mariner, kevc, wolfi)")
+	years        = flag.String("years", "", "update years (only redhat)")
+	targetUri    = flag.String("target-uri", "", "alternative repository URI (only glad)")
+	targetBranch = flag.String("target-branch", "", "alternative repository branch (only glad)")
 )
 
 func main() {
@@ -82,7 +92,7 @@ func run() error {
 	switch *target {
 	case "nvd":
 		if err := nvd.Update(now.Year()); err != nil {
-			return xerrors.Errorf("error in NVD update: %w", err)
+			return xerrors.Errorf("NVD update error: %w", err)
 		}
 		commitMsg = "NVD"
 	case "redhat":
@@ -98,62 +108,60 @@ func run() error {
 			return xerrors.New("years must be specified")
 		}
 		if err := securitydataapi.Update(yearList); err != nil {
-			return err
+			return xerrors.Errorf("Red Hat Security Data API update error: %w", err)
 		}
 		commitMsg = "RedHat " + *years
 	case "redhat-oval":
 		rc := redhatoval.NewConfig()
 		if err := rc.Update(); err != nil {
-			return xerrors.Errorf("error in Red Hat OVAL v2 update: %w", err)
+			return xerrors.Errorf("Red Hat OVALv2 update error: %w", err)
 		}
 		commitMsg = "Red Hat OVAL v2"
 	case "debian":
 		dc := tracker.NewClient()
 		if err := dc.Update(); err != nil {
-			return xerrors.Errorf("error in Debian update: %w", err)
+			return xerrors.Errorf("Debian update error: %w", err)
 		}
 		commitMsg = "Debian Security Bug Tracker"
-	case "debian-oval":
-		if err := debianoval.Update(); err != nil {
-			return xerrors.Errorf("error in Debian OVAL update: %w", err)
-		}
-		commitMsg = "Debian OVAL"
 	case "ubuntu":
 		if err := ubuntu.Update(); err != nil {
-			return xerrors.Errorf("error in Debian update: %w", err)
+			return xerrors.Errorf("Ubuntu update error: %w", err)
 		}
 		commitMsg = "Ubuntu CVE Tracker"
 	case "alpine":
 		au := alpine.NewUpdater()
 		if err := au.Update(); err != nil {
-			return xerrors.Errorf("error in Alpine update: %w", err)
+			return xerrors.Errorf("Alpine update error: %w", err)
 		}
 		commitMsg = "Alpine Issue Tracker"
-	case "amazon":
-		ac := amazon.Config{
-			LinuxMirrorListURI: amazon.LinuxMirrorListURI,
-			VulnListDir:        utils.VulnListDir(),
+	case "alpine-unfixed":
+		au := alpineunfixed.NewUpdater()
+		if err := au.Update(); err != nil {
+			return xerrors.Errorf("Alpine Secfixes Tracker update error: %w", err)
 		}
+		commitMsg = "Alpine Secfixes Tracker"
+	case "amazon":
+		ac := amazon.NewConfig()
 		if err := ac.Update(); err != nil {
-			return xerrors.Errorf("error in Amazon update: %w", err)
+			return xerrors.Errorf("Amazon Linux update error: %w", err)
 		}
 		commitMsg = "Amazon Linux Security Center"
 	case "oracle-oval":
 		oc := oracleoval.NewConfig()
 		if err := oc.Update(); err != nil {
-			return xerrors.Errorf("error in Oracle Linux OVAL update: %w", err)
+			return xerrors.Errorf("Oracle OVAL update error: %w", err)
 		}
 		commitMsg = "Oracle Linux OVAL"
 	case "suse-cvrf":
 		sc := susecvrf.NewConfig()
 		if err := sc.Update(); err != nil {
-			return xerrors.Errorf("error in SUSE CVRF update: %w", err)
+			return xerrors.Errorf("SUSE CVRF update error: %w", err)
 		}
 		commitMsg = "SUSE CVRF"
 	case "photon":
 		pc := photon.NewConfig()
 		if err := pc.Update(); err != nil {
-			return xerrors.Errorf("error in Photon update: %w", err)
+			return xerrors.Errorf("Photon update error: %w", err)
 		}
 		commitMsg = "Photon Security Advisories"
 	case "ghsa":
@@ -164,27 +172,69 @@ func run() error {
 
 		gc := ghsa.NewConfig(githubql.NewClient(httpClient))
 		if err := gc.Update(); err != nil {
-			return xerrors.Errorf("error in GitHub Security Advisory update: %w", err)
+			return xerrors.Errorf("GitHub Security Advisory update error: %w", err)
 		}
 		commitMsg = "GitHub Security Advisory"
 	case "glad":
-		gu := glad.NewUpdater()
+		gu := glad.NewUpdater(*targetUri, *targetBranch)
 		if err := gu.Update(); err != nil {
-			return xerrors.Errorf("error in GitLab Advisory Database update: %w", err)
+			return xerrors.Errorf("GitLab Advisory Database update error: %w", err)
 		}
 		commitMsg = "GitLab Advisory Database"
 	case "cwe":
 		c := cwe.NewCWEConfig()
 		if err := c.Update(); err != nil {
-			return xerrors.Errorf("error in CWE update: %w", err)
+			return xerrors.Errorf("CWE update error: %w", err)
 		}
 		commitMsg = "CWE Advisories"
 	case "arch-linux":
 		al := arch_linux.NewArchLinux()
 		if err := al.Update(); err != nil {
-			return xerrors.Errorf("error in CWE update: %w", err)
+			return xerrors.Errorf("Arch Linux update error: %w", err)
 		}
 		commitMsg = "Arch Linux Security Tracker"
+	case "alma":
+		ac := alma.NewConfig()
+		if err := ac.Update(); err != nil {
+			return xerrors.Errorf("AlmaLinux update error: %w", err)
+		}
+		commitMsg = "AlmaLinux Security Advisory"
+	case "rocky":
+		rc := rocky.NewConfig()
+		if err := rc.Update(); err != nil {
+			return xerrors.Errorf("Rocky Linux update error: %w", err)
+		}
+		commitMsg = "Rocky Linux Security Advisory"
+	case "osv":
+		p := osv.NewOsv()
+		if err := p.Update(); err != nil {
+			return xerrors.Errorf("OSV update error: %w", err)
+		}
+		commitMsg = "OSV Database"
+	case "go-vulndb":
+		src := govulndb.NewVulnDB()
+		if err := src.Update(); err != nil {
+			return xerrors.Errorf("Go Vulnerability Database update error: %w", err)
+		}
+		commitMsg = "Go Vulnerability Database"
+	case "mariner":
+		src := mariner.NewConfig()
+		if err := src.Update(); err != nil {
+			return xerrors.Errorf("CBL-Mariner Vulnerability Data update error: %w", err)
+		}
+		commitMsg = "CBL-Mariner Vulnerability Data"
+	case "kevc":
+		src := kevc.NewConfig()
+		if err := src.Update(); err != nil {
+			return xerrors.Errorf("Known Exploited Vulnerability Catalog update error: %w", err)
+		}
+		commitMsg = "Known Exploited Vulnerability Catalog"
+	case "wolfi":
+		wu := wolfi.NewUpdater()
+		if err := wu.Update(); err != nil {
+			return xerrors.Errorf("Wolfi update error: %w", err)
+		}
+		commitMsg = "Wolfi Issue Tracker"
 	default:
 		return xerrors.New("unknown target")
 	}

@@ -16,26 +16,31 @@ import (
 )
 
 const (
-	repoURL = "https://gitlab.com/gitlab-org/advisories-community.git"
-	gladDir = "glad" // GitLab Advisory Database
+	repoURL    = "https://gitlab.com/gitlab-org/advisories-community.git"
+	repoBranch = "main"
+	gladDir    = "glad" // GitLab Advisory Database
 )
 
 var (
 	// https://gitlab.com/gitlab-org/advisories-community
-	supportedTypes = []string{"gem", "go", "maven", "npm", "nuget", "packagist", "pypi", "nuget", "conan"}
+	supportedTypes = []string{"conan", "gem", "go", "maven", "npm", "nuget", "packagist", "pypi"}
 )
 
 type Updater struct {
-	vulnListDir string
-	cacheDir    string
-	appFs       afero.Fs
+	alternativeRepoBranch string
+	alternativeRepoURL    string
+	vulnListDir           string
+	cacheDir              string
+	appFs                 afero.Fs
 }
 
-func NewUpdater() Updater {
+func NewUpdater(alternativeRepoURL string, alternativeRepoBranch string) Updater {
 	return Updater{
-		vulnListDir: utils.VulnListDir(),
-		cacheDir:    utils.CacheDir(),
-		appFs:       afero.NewOsFs(),
+		alternativeRepoBranch: alternativeRepoBranch,
+		alternativeRepoURL:    alternativeRepoURL,
+		vulnListDir:           utils.VulnListDir(),
+		cacheDir:              utils.CacheDir(),
+		appFs:                 afero.NewOsFs(),
 	}
 }
 
@@ -44,8 +49,24 @@ func (u Updater) Update() error {
 
 	gc := git.Config{}
 	dir := filepath.Join(u.cacheDir, gladDir)
-	if _, err := gc.CloneOrPull(repoURL, dir, "main", false); err != nil {
+	defaultOrAlternativeRepoURL := repoURL
+	defaultOrAlternativeRepoBranch := repoBranch
+
+	if len(u.alternativeRepoURL) > 0 {
+		defaultOrAlternativeRepoURL = u.alternativeRepoURL
+	}
+
+	if len(u.alternativeRepoBranch) > 0 {
+		defaultOrAlternativeRepoBranch = u.alternativeRepoBranch
+	}
+
+	if _, err := gc.CloneOrPull(defaultOrAlternativeRepoURL, dir, defaultOrAlternativeRepoBranch, false); err != nil {
 		return xerrors.Errorf("failed to clone or pull: %w", err)
+	}
+
+	log.Println("Removing old glad files...")
+	if err := os.RemoveAll(filepath.Join(u.vulnListDir, gladDir)); err != nil {
+		return xerrors.Errorf("can't remove a folder with old files %s/%s: %w", u.vulnListDir, gladDir, err)
 	}
 
 	log.Println("Walking glad...")
@@ -96,20 +117,20 @@ func (u Updater) walkDir(root string) error {
 	}
 
 	for _, adv := range advisories {
-		adv.PackageSlug = strings.TrimSuffix(adv.PackageSlug, "/")
+		adv.Identifier = updateIdentifiers(adv.Identifier, adv.Identifiers)
+		adv.Identifiers = nil
 
-		// Update Identifier to upper case
-		// e.g. cvE-2014-3530 => CVE-2014-3530
-		// https://gitlab.com/gitlab-org/advisories-community/-/blob/74a18a7968c2bdd2dd901f6c98f06cb1d9684476/maven/org.picketlink/picketlink-common/cvE-2014-3530.yml
-		adv.Identifier = strings.ToUpper(adv.Identifier)
-
-		slug := u.searchPrefix(adv, advisories)
-		if slug != "" {
-			// Update the package_slug to flatten nested packages
-			// e.g.  go/k8s.io/kubernetes => go/k8s.io/kubernetes
-			//       go/k8s.io/kubernetes/pkg/kubelet/kuberuntime => go/k8s.io/kubernetes
-			adv.PackageSlug = slug
+		// Only 'go' package slugs need to be updated
+		if strings.HasPrefix(adv.PackageSlug, "go/") {
+			slug := u.searchPrefix(adv.PackageSlug, advisories)
+			if slug != "" {
+				// Update the package_slug to flatten nested packages
+				// e.g.  go/k8s.io/kubernetes => go/k8s.io/kubernetes
+				//       go/k8s.io/kubernetes/pkg/kubelet/kuberuntime => go/k8s.io/kubernetes
+				adv.PackageSlug = slug
+			}
 		}
+
 		if err = u.save(adv); err != nil {
 			return xerrors.Errorf("save error: %w", err)
 		}
@@ -118,13 +139,20 @@ func (u Updater) walkDir(root string) error {
 	return nil
 }
 
-func (u Updater) searchPrefix(adv advisory, advisories []advisory) string {
+func (u Updater) searchPrefix(pkgSlug string, advisories []advisory) string {
 	for _, a := range advisories {
-		if a.PackageSlug == adv.PackageSlug {
+		if pkgSlug == a.PackageSlug {
 			continue
 		}
+		// '/' has been added to skip packages with same prefix
+		// e.g.: pkgSlug == go/github.com/apache/thrift-mini
+		// a.PackageSlug == go/github.com/apache/thrift
+		advSlug := a.PackageSlug
+		if !strings.HasSuffix(advSlug, "/") {
+			advSlug += "/"
+		}
 
-		if strings.HasPrefix(adv.PackageSlug, a.PackageSlug) {
+		if strings.HasPrefix(pkgSlug, advSlug) {
 			return a.PackageSlug
 		}
 	}
@@ -141,4 +169,22 @@ func (u Updater) save(adv advisory) error {
 		return xerrors.Errorf("unable to write JSON (%s): %w", fileName, err)
 	}
 	return nil
+}
+
+func updateIdentifiers(basicIdentifier string, basicIdentifiers []string) string {
+	// Update Identifier to upper case
+	// e.g. cvE-2014-3530 => CVE-2014-3530
+	// https://gitlab.com/gitlab-org/advisories-community/-/blob/74a18a7968c2bdd2dd901f6c98f06cb1d9684476/maven/org.picketlink/picketlink-common/cvE-2014-3530.yml
+	updated := strings.ToUpper(basicIdentifier)
+
+	// If an advisory doesn't have CVE-ID but there is GHSA-ID, we use GHSA-ID
+	if !strings.HasPrefix(updated, "CVE") {
+		for i := range basicIdentifiers {
+			if ident := strings.ToUpper(basicIdentifiers[i]); strings.HasPrefix(ident, "GHSA") {
+				// return no uppercase string because GHSA id contains small letters (eg GHSA-qq97-vm5h-rrhg)
+				return basicIdentifiers[i]
+			}
+		}
+	}
+	return updated
 }
